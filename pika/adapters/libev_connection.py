@@ -99,8 +99,9 @@ class LibevConnection(BaseConnection):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
                 self.ioloop = pyev.default_loop()
+                self.ioloop.update()
 
-        self.async = None
+        self.async_watcher = None
         self._on_signal_callback = on_signal_callback
         self._io_watcher = None
         self._active_timers = {}
@@ -127,7 +128,7 @@ class LibevConnection(BaseConnection):
             if self._on_signal_callback and not global_sigterm_watcher:
                 global_sigterm_watcher = \
                     self.ioloop.signal(signal.SIGTERM,
-                                                                                  self._handle_sigterm)
+                                       self._handle_sigterm)
 
             if self._on_signal_callback and not global_sigint_watcher:
                 global_sigint_watcher = self.ioloop.signal(signal.SIGINT,
@@ -136,11 +137,14 @@ class LibevConnection(BaseConnection):
             if not self._io_watcher:
                 self._io_watcher = \
                     self.ioloop.io(self.socket.fileno(),
-                                                                        self._PIKA_TO_LIBEV_ARRAY[self.event_state],
-                                                                        self._handle_events)
+                                   self._PIKA_TO_LIBEV_ARRAY[self.event_state],
+                                   self._handle_events)
 
-            self.async = pyev.Async(self.ioloop, self._noop_callable)
-            self.async.start()
+            # NOTE: if someone knows why this async is needed here, please add
+            # a comment in the code that explains it.
+            self.async_watcher = pyev.Async(self.ioloop, self._noop_callable)
+            self.async_watcher.start()
+
             if self._on_signal_callback:
                 global_sigterm_watcher.start()
             if self._on_signal_callback:
@@ -196,7 +200,7 @@ class LibevConnection(BaseConnection):
 
     def _reset_io_watcher(self):
         """Reset the IO watcher; retry as necessary
-        
+
         """
         self._io_watcher.stop()
 
